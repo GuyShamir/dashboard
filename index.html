@@ -375,6 +375,32 @@ table.rec td:first-child{min-width:260px}
 table.rec td:first-child>a:first-child{color:var(--ink);font-weight:600;text-decoration:none}
 table.rec td:first-child>a:first-child:hover{text-decoration:underline}
 .recnote{color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5}
+/* מחקר: נושאים להעמקה לפי תחום. כל נושא נפתח בלחיצה. התוכן מגיע מהנתונים, לא מהדף */
+.rintro{color:var(--ink2);margin:0 0 6px;max-width:780px}
+.rlegend{display:flex;gap:6px 14px;flex-wrap:wrap;margin:0 0 14px;color:var(--muted);font-size:12.5px;align-items:center}
+.rlist{display:grid;gap:8px}
+details.rt{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);min-width:0}
+details.rt>summary{cursor:pointer;list-style:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:3px 10px;padding:13px 16px;border-radius:12px}
+details.rt>summary::-webkit-details-marker{display:none}
+details.rt>summary:hover{background:var(--surface2)}
+details.rt>summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+details.rt>summary .rtt{font-weight:700;font-size:15.5px;overflow-wrap:anywhere}
+details.rt>summary .rtg{grid-column:1/-1;color:var(--ink2);font-size:14px}
+details.rt>summary .chev{color:var(--muted);font-size:13px;transition:transform .15s}
+details.rt[open]>summary .chev{transform:rotate(180deg)}
+details.rt[open]>summary{border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
+.rbody{padding:14px 16px 16px;display:grid;gap:13px;max-width:860px}
+.rbody h4{margin:0 0 4px;font-size:12.5px;color:var(--muted);font-weight:600}
+.rbody p{margin:0}
+.rbody ul{margin:0;padding-inline-start:18px;display:grid;gap:5px}
+.rbody ul.rsrc{list-style:none;padding:0;gap:6px;font-size:14px}
+.rbody ul.rsrc a{overflow-wrap:anywhere}
+.rbody .rwhere{background:var(--surface2);border-radius:9px;padding:9px 12px}
+.lv{display:inline-block;padding:2px 9px;border-radius:999px;border:1px solid var(--line);font-size:12px;font-weight:600;white-space:nowrap;color:var(--ink2)}
+.lv.strong{color:var(--good);border-color:currentColor}
+.lv.official{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.lv.contested,.lv.vendor{color:var(--danger);border-color:currentColor}
+@media (max-width:600px){details.rt>summary{grid-template-columns:minmax(0,1fr) auto;padding:12px 13px}details.rt>summary .lv{grid-column:1/-1;justify-self:start;order:3}.rbody{padding:12px 13px 14px}}
 .st{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:12px;white-space:nowrap;color:var(--ink2)}
 .st.wait{background:var(--accent-soft);color:var(--accent);border-color:transparent;font-weight:600}
 .st.done{color:var(--muted)}
@@ -650,6 +676,7 @@ function mockApi() {
     async setDallasPost(id, patch) { Object.assign(d.dallas.find(x => x.id === id), patch); },
     async removeDallasPost(id) { d.dallas.splice(d.dallas.findIndex(x => x.id === id), 1); },
     async dallasContent() { return window.JD_MOCK_DALLAS_CONTENT ? JSON.parse(JSON.stringify(window.JD_MOCK_DALLAS_CONTENT)) : null; },
+    async research() { return window.JD_MOCK_RESEARCH ? JSON.parse(JSON.stringify(window.JD_MOCK_RESEARCH)) : null; },
   };
 }
 function supaApi(sb) {
@@ -733,7 +760,7 @@ function supaApi(sb) {
     async stopTimer(id) { return ok(await sb.from("time_entries").update({ ended_at: new Date().toISOString() }).eq("id", id).is("ended_at", null).select())[0] || null; },
     async removeTime(id) { ok(await sb.from("time_entries").delete().eq("id", id)); },
     // ניהול (הטבלה fin_data): שורה לכל סוג נתון (תזרים, הוצאות, חשבוניות...), JSON אחד בכל שורה. ממלא אותה build_manage.py.
-    async finData() { return Object.fromEntries(ok(await sb.from("fin_data").select("key,data")).map(x => [x.key, x.data])); },
+    async finData() { return Object.fromEntries(ok(await sb.from("fin_data").select("key,data").neq("key", "research")).map(x => [x.key, x.data])); },  // התוכן של ״מחקר״ נטען בנפרד, רק במסך שלו
     // invoice_paid: מה שגיא סימן כ״שולם״ במסך ״גבייה״. הסקריפט לא נוגע בטבלה הזו.
     async invoicePaid() { return pages(() => sb.from("invoice_paid").select("invoice_key,paid_on").order("invoice_key")); },
     async setInvoicePaid(invoice_key, paid_on) {
@@ -754,6 +781,8 @@ function supaApi(sb) {
     async removeDallasPost(id) { ok(await sb.from("dallas_posts").delete().eq("id", id)); },
     // ״המלצות לתוכן״ במסך ״דאלאס״: עותק של ״תוכן לקהילה״ מנויישן, בטבלה fin_data במפתח dallas_content. ממלא אותו build_dallas_content.py.
     async dallasContent() { const r = ok(await sb.from("fin_data").select("data").eq("key", "dallas_content").maybeSingle()); return r ? r.data : null; },
+    // מסך ״מחקר״: כל התוכן (תחומים, נושאים ומקורות) בטבלה fin_data במפתח research. ממלא אותו build_research.py. נטען רק כשנכנסים למסך.
+    async research() { const r = ok(await sb.from("fin_data").select("data").eq("key", "research").maybeSingle()); return r ? r.data : null; },
   };
 }
 // integrity (לא חובה): חתימת השלמות של הקובץ. הדפדפן לא מריץ קובץ שהתוכן שלו השתנה, גם אם ה-CDN נפרץ (26.11.2026).
@@ -762,7 +791,7 @@ function loadScript(src, integrity) {
 }
 
 /* ===== מצב ===== */
-const state = { clients: [], oldClients: [], oldOpen: false, metrics: [], tasks: [], comments: [], openThread: null, notes: [], sync: [], status: [], settings: {}, email: "", times: [], focus: false, timerBusy: false, archOpen: false, archSeen: null, archBusy: false, fin: null, finBusy: false, finErr: false, paid: {}, xkind: {}, xnovat: {}, dallas: null, dallasBusy: false, dallasErr: false, textDraft: {}, xOpen: new Set(), setOpen: new Set(), campaigns: [], cgoals: [], crm: [], recent: [], webinars: [], webRows: {}, webOld: false, xAllOpen: false, brand: null, finMonth: "", from: "", to: "", preset: "month", first: today(), showDone: false };
+const state = { clients: [], oldClients: [], oldOpen: false, metrics: [], tasks: [], comments: [], openThread: null, notes: [], sync: [], status: [], settings: {}, email: "", times: [], focus: false, timerBusy: false, archOpen: false, archSeen: null, archBusy: false, fin: null, finBusy: false, finErr: false, paid: {}, xkind: {}, xnovat: {}, dallas: null, dallasBusy: false, dallasErr: false, research: null, researchBusy: false, researchErr: false, resOpen: new Set(), textDraft: {}, xOpen: new Set(), setOpen: new Set(), campaigns: [], cgoals: [], crm: [], recent: [], webinars: [], webRows: {}, webOld: false, xAllOpen: false, brand: null, finMonth: "", from: "", to: "", preset: "month", first: today(), showDone: false };
 
 /* ===== הגדרות לפי לקוח (26.11.2026) =====
    מה שמיוחד ללקוח מסוים לא כתוב בדף, כי הדף ציבורי. הוא נשמר ב-app_settings, במפתח client_config, ונטען בכניסה:
@@ -3284,6 +3313,46 @@ function screenDallas() {
         : h("div", { class: "empty" }, "עוד אין פוסטים. מוסיפים את הראשון בשורה שלמעלה."),
       h("p", { class: "note" }, "שורה לכל פוסט. מסמנים ✓ בכל פלטפורמה שבה הפוסט פורסם, והסימון נשמר מיד. המספר ליד כל פלטפורמה הוא כמה פוסטים פורסמו בה."))));
 }
+/* ===== מחקר: מסך בתפריט הראשי, בין ״ניהול״ ל״הגדרות״ (גיא, 27.11.2026) ===== */
+// נושאים להעמקה, לפי תחום. התוכן לא כתוב בדף: הוא נטען מ-fin_data במפתח research, ורק כשנכנסים למסך. המקור המקומי: research.json.
+// המבנה: { as_of, areas: [{ key, title, intro, topics: [{ id, title, gist, level, where, points, use, caveat, next, sources: [{ t, u, k, note }] }] }] }
+// level = כמה הנושא מבוסס. k = סוג המקור. מפתח שלא מוכר מוצג בלי תגית.
+const RES_LEVEL = { strong: "מבוסס היטב", moderate: "מבוסס, תלוי הקשר", contested: "שנוי במחלוקת", official: "תיעוד רשמי", data: "מחקר ענפי", practice: "מסגרת עבודה", vendor: "טענת ספק", list: "רשימה, לא המלצה" };
+const RES_KIND = { research: "מחקר", official: "רשמי", book: "ספר", report: "דוח", third: "צד שלישי" };
+async function loadResearch() {
+  state.researchBusy = true;
+  try { state.research = (await api.research()) || { areas: [] }; state.researchErr = false; } catch (e) { console.error(e); state.researchErr = true; }
+  state.researchBusy = false; render();
+}
+function screenResearch(tab) {
+  const R = state.research, head = h("h2", {}, "מחקר");
+  if (!R) return h("div", {}, head, h("div", { class: "empty" }, state.researchErr ? "המחקר לא נטען. רענן את הדף, ואם זה חוזר, התוכן עוד לא הועלה." : "טוען…"));
+  const areas = (R.areas || []).filter(a => a && a.key && Array.isArray(a.topics));
+  if (!areas.length) return h("div", {}, head, h("div", { class: "empty" }, "תוכן המחקר עוד לא הועלה לדשבורד."));
+  const area = areas.find(a => a.key === tab) || areas[0];
+  const sec = (title, body, cls) => body ? h("div", { class: cls || null }, h("h4", {}, title), body) : null;
+  const para = v => v ? h("p", {}, v) : null;
+  const list = v => Array.isArray(v) && v.length ? h("ul", {}, v.map(x => h("li", {}, x))) : null;
+  const sources = v => { const ok = (v || []).filter(x => x && cleanUrl(x.u)); return ok.length ? h("ul", { class: "rsrc" }, ok.map(x => h("li", {},
+    h("a", { href: cleanUrl(x.u), target: "_blank", rel: "noopener noreferrer", dir: "auto" }, x.t || new URL(cleanUrl(x.u)).hostname),
+    RES_KIND[x.k] ? h("span", { class: "tagx" }, RES_KIND[x.k]) : null, x.note ? h("span", { class: "tagx" }, "· " + x.note) : null))) : null; };
+  const used = Object.keys(RES_LEVEL).filter(k => area.topics.some(t => t.level === k));
+  const topic = t => { const id = area.key + "/" + t.id;
+    return h("details", { class: "rt", open: state.resOpen.has(id), ontoggle: ev => { if (ev.target.open) state.resOpen.add(id); else state.resOpen.delete(id); } },
+      h("summary", {}, h("span", { class: "rtt" }, t.title), RES_LEVEL[t.level] ? h("span", { class: "lv " + t.level }, RES_LEVEL[t.level]) : h("span", {}), h("span", { class: "chev", "aria-hidden": "true" }, "▾"),
+        t.gist ? h("span", { class: "rtg" }, t.gist) : null),
+      h("div", { class: "rbody" },
+        sec("איפה זה בדשבורד", para(t.where), "rwhere"), sec("מה חשוב לדעת", list(t.points)), sec("איך משתמשים בזה", para(t.use)),
+        sec("הסתייגות", para(t.caveat)), sec("להעמקה", para(t.next)), sec("מקורות", sources(t.sources)))); };
+  const tabs = h("nav", { class: "tabs", "aria-label": "תחומי המחקר" }, areas.map(a => h("a", { href: "#/research/" + a.key, "aria-current": a === area ? "page" : null }, a.title, " ", h("small", { class: "tagx" }, num(a.topics.length)))));
+  // בנייד שורת הלשוניות נגללת לרוחב: מביאים את הלשונית הפעילה למרכז, בלי להזיז את הדף עצמו
+  requestAnimationFrame(() => { const a = tabs.querySelector('[aria-current="page"]'); if (a && tabs.scrollWidth > tabs.clientWidth) { const ar = a.getBoundingClientRect(), tr = tabs.getBoundingClientRect(); tabs.scrollLeft += ar.left + ar.width / 2 - (tr.left + tr.width / 2); } });
+  return h("div", {}, head, tabs,
+    area.intro ? h("p", { class: "rintro" }, area.intro) : null,
+    used.length ? h("div", { class: "rlegend" }, "רמת הביסוס בתחום הזה:", used.map(k => h("span", { class: "lv " + k }, RES_LEVEL[k]))) : null,
+    area.topics.length ? h("div", { class: "rlist" }, area.topics.map(topic)) : h("div", { class: "empty" }, "עוד אין נושאים בתחום הזה."),
+    h("p", { class: "note" }, "נושא נפתח בלחיצה, וכל מקור נפתח בטאב חדש.", R.as_of ? [" המקורות נבדקו ב‑", num(heDate(R.as_of)), "."] : null, R.note ? " " + R.note : null));
+}
 /* ===== ניהול › מצפן (גיא, 25.11.2026): מטרה, ותיעוד הפעולות בשביל המטרה. פעם לשיווק ופעם למכירות ===== */
 // הכול ב-app_settings, בלי טבלה חדשה. area = marketing / sales.
 // המטרה: מחרוזת במפתח compass_<area>_goal (בלוק כתיבה רגיל). הפעולות: מערך במפתח compass_<area>_actions: [{ id, date, text }].
@@ -3352,7 +3421,7 @@ function render() {
   const parts = location.hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "clients" && SLUG[parts[1]]) { location.replace("#/clients/" + SLUG[parts[1]]); return; }  // הכתובת הישנה (halo) עוברת ל-haalo
   if (parts[0] !== "clients") state.brand = null;  // יוצאים מהלקוחות: בכניסה הבאה שואלים שוב
-  const scr = ["clients", "settings", "manage", "dallas"].includes(parts[0]) ? parts[0] : "general";
+  const scr = ["clients", "settings", "manage", "dallas", "research"].includes(parts[0]) ? parts[0] : "general";
   const top = h("header", { class: "topbar" },
     h("span", { class: "brand" }, "Just Digital"),
     h("nav", { class: "mainnav", "aria-label": "תפריט ראשי" },
@@ -3360,6 +3429,7 @@ function render() {
       h("a", { href: "#/clients", "aria-current": scr === "clients" ? "page" : null }, "לקוחות"),
       h("a", { href: "#/dallas", "aria-current": scr === "dallas" ? "page" : null }, "דאלאס"),
       h("a", { href: "#/manage", "aria-current": scr === "manage" ? "page" : null }, "ניהול"),
+      h("a", { href: "#/research", "aria-current": scr === "research" ? "page" : null }, "מחקר"),
       h("a", { href: "#/settings", "aria-current": scr === "settings" ? "page" : null }, "הגדרות")),
     h("span", { class: "spacer" }),
     scr !== "clients" && runningTimer() ? (() => { const r = runningTimer(), rc = state.clients.find(x => x.id === r.client_id);
@@ -3368,9 +3438,10 @@ function render() {
     h("button", { class: "btn small", onclick: signOut }, "יציאה"));
   if (scr === "dallas" && !state.dallas && !state.dallasBusy && !state.dallasErr) loadDallas();  // גם ״דאלאס״ נטען רק כשנכנסים אליו
   if (scr === "manage" && !state.fin && !state.finBusy && !state.finErr) loadManage();  // הנתונים של ״ניהול״ נטענים רק כשנכנסים אליו
+  if (scr === "research" && !state.research && !state.researchBusy && !state.researchErr) loadResearch();  // וגם התוכן של ״מחקר״
   document.body.classList.toggle("focus", !!state.focus && scr === "clients");
   const keep = document.scrollingElement.scrollTop, navKeep = (document.querySelector(".subnav") || {}).scrollTop || 0;
-  $app.replaceChildren(top, h("main", { class: "page" }, scr === "clients" ? screenClient(idOf(safeDecode(parts[1] || ""))) : scr === "settings" ? screenSettings() : scr === "manage" ? screenManage(parts[1]) : scr === "dallas" ? screenDallas() : screenGeneral()));
+  $app.replaceChildren(top, h("main", { class: "page" }, scr === "clients" ? screenClient(idOf(safeDecode(parts[1] || ""))) : scr === "settings" ? screenSettings() : scr === "manage" ? screenManage(parts[1]) : scr === "dallas" ? screenDallas() : scr === "research" ? screenResearch(parts[1]) : screenGeneral()));
   document.scrollingElement.scrollTop = keep;
   railShell();
   const nav = document.querySelector(".subnav"); if (nav) nav.scrollTop = navKeep;  // תפריט הלקוחות נשאר במקום שגללו אליו (הארכיון בסוף שלו)
@@ -3515,7 +3586,7 @@ window.addEventListener("hashchange", () => { if (state.clients.length && $app.q
       // mock-config.js (מקומי בלבד): ההגדרות לפי לקוח, ואילו לקוחות מקבלים וובינרים וגוגל אנליטיקס בנתוני הבדיקה
       try { await loadScript("mock-config.js"); window.JD_MOCK.settings = { ...(window.JD_MOCK.settings || {}), client_config: window.JD_MOCK_CONFIG }; } catch (e) {}
       const flag = k => ((window.JD_MOCK_FLAGS || {})[k] || []);
-      try { await loadScript("mock-manage.js"); } catch (e) {} try { await loadScript("mock-dallas.js"); } catch (e) {} try { await loadScript("mock-dallas-content.js"); } catch (e) {} try { await loadScript("mock-crm.js"); } catch (e) {} try { await loadScript("mock-campaigns.js"); } catch (e) {}
+      try { await loadScript("mock-manage.js"); } catch (e) {} try { await loadScript("mock-dallas.js"); } catch (e) {} try { await loadScript("mock-dallas-content.js"); } catch (e) {} try { await loadScript("mock-research.js"); } catch (e) {} try { await loadScript("mock-crm.js"); } catch (e) {} try { await loadScript("mock-campaigns.js"); } catch (e) {}
       try { await loadScript("mock-webinars.js"); for (const c of window.JD_MOCK.clients) c.webinars = flag("webinars").includes(c.id); } catch (e) {}
       try { await loadScript("mock-sites.js"); window.JD_MOCK.settings = { ...(window.JD_MOCK.settings || {}), ...window.JD_MOCK_SITES }; } catch (e) {}
       try { await loadScript("mock-ga.js"); for (const c of window.JD_MOCK.clients) c.ga = flag("ga").includes(c.id); } catch (e) {}
